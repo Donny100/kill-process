@@ -32,19 +32,25 @@ async function checkPort() {
   loading.value = true;
   message.value = "";
 
+  console.log(`Checking port ${port.value}...`);
+
   try {
     const response = await invoke<PortCheckResult>("check_port", { port: port.value.toString() });
     Object.assign(result, response);
     
     if (response.error) {
       message.value = `Error: ${response.error}`;
+      console.error(`Port check error: ${response.error}`);
     } else if (!response.is_occupied) {
-      message.value = `Port ${port.value} is not occupied`;
+      message.value = `Port ${port.value} is available`;
+      console.log(`Port ${port.value} is available`);
     } else {
-      message.value = `Port ${port.value} is occupied by ${response.processes.length} process(es)`;
+      message.value = `Found ${response.processes.length} process(es) using port ${port.value}`;
+      console.log(`Found ${response.processes.length} processes using port ${port.value}`, response.processes);
     }
   } catch (error) {
     message.value = `Query failed: ${error}`;
+    console.error(`Port check failed: ${error}`);
   } finally {
     loading.value = false;
   }
@@ -52,14 +58,18 @@ async function checkPort() {
 
 // Kill process
 async function killProcess(pid: string, name: string) {
+  console.log(`Attempting to kill process ${name} (PID: ${pid})`);
+  
   try {
     const response = await invoke<string>("kill_process", { pid });
-    message.value = `Successfully killed process ${name} (PID: ${pid})`;
+    message.value = `Successfully terminated process ${name} (PID: ${pid})`;
+    console.log(`Successfully killed process ${name} (PID: ${pid})`);
     
     // Refresh port check after killing process
     await checkPort();
   } catch (error) {
-    message.value = `Failed to kill process: ${error}`;
+    message.value = `Failed to terminate process: ${error}`;
+    console.error(`Failed to kill process ${name} (PID: ${pid}): ${error}`);
   }
 }
 
@@ -72,94 +82,421 @@ function handleKeyPress(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-    <div class="max-w-2xl mx-auto">
+  <div class="app-container">
+    <div class="main-content">
       <!-- Header -->
-      <div class="text-center mb-8">
-        <h1 class="text-4xl font-bold text-gray-800 mb-2">KillProcess</h1>
-        <p class="text-gray-600">Detect and kill processes occupying ports</p>
-      </div>
+      <header class="app-header">
+        <h1 class="app-title">⚡ Kill Process</h1>
+      </header>
 
       <!-- Port Input Section -->
-      <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-        <div class="flex gap-3">
+      <section class="input-section">
+        <div class="input-group">
           <input
             v-model="port"
             @keypress="handleKeyPress"
             type="number"
             placeholder="Enter port number (e.g., 3000)"
-            class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+            class="port-input"
+            :disabled="loading"
           />
           <button
             @click="checkPort"
             :disabled="loading"
-            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            class="check-button"
           >
-            <span v-if="loading" class="flex items-center gap-2">
-              <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Querying...
+            <span v-if="loading" class="loading-content">
+              <span class="loading-spinner"></span>
+              Scanning...
             </span>
-            <span v-else>Check Port</span>
+            <span v-else>🔍 Check Port</span>
           </button>
         </div>
-      </div>
+      </section>
 
       <!-- Message Display -->
-      <div v-if="message" class="mb-6">
-        <div class="bg-white rounded-lg p-4 shadow-md">
-          <p class="text-gray-700">{{ message }}</p>
+      <div v-if="message" class="message-display">
+        <div class="message-content" :class="{ 'error': message.includes('Error') || message.includes('failed') }">
+          <span class="message-icon">{{ message.includes('Error') || message.includes('failed') ? '❌' : message.includes('available') ? '✅' : 'ℹ️' }}</span>
+          {{ message }}
         </div>
       </div>
 
-      <!-- Process List -->
-      <div v-if="result.processes.length > 0" class="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div class="bg-gray-50 px-6 py-4 border-b">
-          <h2 class="text-lg font-semibold text-gray-800">Occupying Processes</h2>
+      <!-- Process Table -->
+      <div v-if="result.processes.length > 0" class="process-table-container">
+        <div class="table-header">
+          <h2 class="table-title">🔥 Processes Using Port {{ port }}</h2>
+          <span class="process-count">{{ result.processes.length }} process(es) found</span>
         </div>
         
-        <div class="divide-y divide-gray-200">
-          <div
-            v-for="process in result.processes"
-            :key="process.pid"
-            class="px-6 py-4 hover:bg-gray-50 transition-colors"
-          >
-            <div class="flex items-center justify-between">
-              <div class="flex-1">
-                <div class="flex items-center gap-3">
-                  <div class="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <div>
-                    <p class="font-medium text-gray-900">{{ process.name }}</p>
-                    <p class="text-sm text-gray-500">PID: {{ process.pid }} | 端口: {{ process.port }}</p>
-                  </div>
-                </div>
-              </div>
-              
-                              <button
-                  @click="killProcess(process.pid, process.name)"
-                  class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
-                >
-                  Kill Process
-                </button>
-            </div>
-          </div>
+        <div class="table-wrapper">
+          <table class="process-table">
+            <thead>
+              <tr>
+                <th>Port</th>
+                <th>PID</th>
+                <th>Process Name</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="process in result.processes"
+                :key="process.pid"
+                class="process-row"
+              >
+                <td class="port-cell">
+                  <span class="port-badge">{{ process.port }}</span>
+                </td>
+                <td class="pid-cell">{{ process.pid }}</td>
+                <td class="name-cell">
+                  <span class="process-name">{{ process.name }}</span>
+                </td>
+                <td class="action-cell">
+                  <button
+                    @click="killProcess(process.pid, process.name)"
+                    class="kill-button"
+                    title="Terminate this process"
+                  >
+                    💀 Kill
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="!loading && port && !result.is_occupied" class="bg-white rounded-xl shadow-lg p-8 text-center">
-        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-        </div>
-        <h3 class="text-lg font-semibold text-gray-800 mb-2">Port Available</h3>
-        <p class="text-gray-600">Port {{ port }} is not occupied by any process</p>
+      <div v-else-if="!loading && port && !result.is_occupied" class="empty-state">
+        <div class="empty-icon">✨</div>
+        <h3 class="empty-title">Port Available</h3>
+        <p class="empty-description">Port {{ port }} is not being used by any process</p>
       </div>
     </div>
   </div>
 </template>
 
+<style scoped>
+/* Apple-inspired design system */
+* {
+  box-sizing: border-box;
+}
 
+.app-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  padding: 20px;
+}
+
+.main-content {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* Header Styles */
+.app-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.app-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #1d1d1f;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.02em;
+}
+
+.app-subtitle {
+  font-size: 1.1rem;
+  color: #6e6e73;
+  margin: 0;
+  font-weight: 400;
+}
+
+/* Input Section */
+.input-section {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.input-group {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.port-input {
+  flex: 1;
+  padding: 14px 16px;
+  border: 2px solid #e5e5e7;
+  border-radius: 12px;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  background: white;
+  outline: none;
+}
+
+.port-input:focus {
+  border-color: #007aff;
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.port-input:disabled {
+  background: #f2f2f7;
+  color: #8e8e93;
+  cursor: not-allowed;
+}
+
+.check-button {
+  padding: 14px 24px;
+  background: linear-gradient(135deg, #007aff 0%, #5856d6 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3);
+  outline: none;
+}
+
+.check-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 122, 255, 0.4);
+}
+
+.check-button:active {
+  transform: translateY(0);
+}
+
+.check-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.loading-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Message Display */
+.message-display {
+  margin-bottom: 24px;
+}
+
+.message-content {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid #007aff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 500;
+  color: #1d1d1f;
+}
+
+.message-content.error {
+  border-left-color: #ff3b30;
+  background: rgba(255, 59, 48, 0.05);
+}
+
+.message-icon {
+  font-size: 18px;
+}
+
+/* Process Table */
+.process-table-container {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.table-header {
+  background: linear-gradient(135deg, #f2f2f7 0%, #e5e5ea 100%);
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.table-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0;
+}
+
+.process-count {
+  font-size: 0.9rem;
+  color: #6e6e73;
+  font-weight: 500;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.process-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.process-table th {
+  background: #f2f2f7;
+  padding: 16px 20px;
+  text-align: left;
+  font-weight: 600;
+  color: #1d1d1f;
+  border-bottom: 1px solid #e5e5ea;
+  white-space: nowrap;
+}
+
+.process-row {
+  transition: background-color 0.2s ease;
+}
+
+.process-row:hover {
+  background: rgba(0, 122, 255, 0.05);
+}
+
+.process-table td {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  vertical-align: middle;
+}
+
+.port-badge {
+  background: linear-gradient(135deg, #007aff 0%, #5856d6 100%);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.pid-cell {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-weight: 500;
+  color: #6e6e73;
+}
+
+.process-name {
+  font-weight: 500;
+  color: #1d1d1f;
+}
+
+.kill-button {
+  background: linear-gradient(135deg, #ff3b30 0%, #ff2d92 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
+}
+
+.kill-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
+}
+
+.kill-button:active {
+  transform: translateY(0);
+}
+
+/* Empty State */
+.empty-state {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  padding: 48px 24px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+}
+
+.empty-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 0 0 8px 0;
+}
+
+.empty-description {
+  color: #6e6e73;
+  font-size: 1rem;
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 16px;
+  }
+  
+  .input-group {
+    flex-direction: column;
+  }
+  
+  .check-button {
+    width: 100%;
+  }
+  
+  .table-header {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  
+  .process-table {
+    font-size: 12px;
+  }
+  
+  .process-table th,
+  .process-table td {
+    padding: 12px 16px;
+  }
+}
+</style>

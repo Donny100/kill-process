@@ -19,9 +19,15 @@ pub struct PortCheckResult {
 // Check if a port is occupied and return process information
 #[tauri::command]
 fn check_port(port: String) -> PortCheckResult {
+    println!("[INFO] Starting port check for port: {}", port);
+    
     let port_num = match u16::from_str(&port) {
-        Ok(p) => p,
-        Err(_) => {
+        Ok(p) => {
+            println!("[DEBUG] Port number parsed successfully: {}", p);
+            p
+        },
+        Err(e) => {
+            println!("[ERROR] Invalid port number '{}': {}", port, e);
             return PortCheckResult {
                 is_occupied: false,
                 processes: vec![],
@@ -30,7 +36,8 @@ fn check_port(port: String) -> PortCheckResult {
         }
     };
 
-    // Use lsof to check port usage on macOS
+    // Use lsof to check port usage - works on macOS and Linux
+    println!("[DEBUG] Executing lsof command for port {}", port_num);
     let output = Command::new("lsof")
         .args(&["-i", &format!(":{}", port_num), "-P", "-n"])
         .output();
@@ -39,7 +46,15 @@ fn check_port(port: String) -> PortCheckResult {
         Ok(output) => {
             if output.status.success() {
                 let output_str = String::from_utf8_lossy(&output.stdout);
+                println!("[DEBUG] lsof command successful, output length: {} characters", output_str.len());
+                
                 let processes = parse_lsof_output(&output_str, &port);
+                println!("[INFO] Found {} processes using port {}", processes.len(), port);
+                
+                for process in &processes {
+                    println!("[DEBUG] Process found - PID: {}, Name: {}, Port: {}", 
+                             process.pid, process.name, process.port);
+                }
                 
                 PortCheckResult {
                     is_occupied: !processes.is_empty(),
@@ -47,6 +62,11 @@ fn check_port(port: String) -> PortCheckResult {
                     error: None,
                 }
             } else {
+                let error_str = String::from_utf8_lossy(&output.stderr);
+                println!("[DEBUG] lsof command failed with status: {}, stderr: {}", 
+                         output.status, error_str);
+                println!("[INFO] Port {} appears to be available (no processes found)", port);
+                
                 PortCheckResult {
                     is_occupied: false,
                     processes: vec![],
@@ -54,17 +74,29 @@ fn check_port(port: String) -> PortCheckResult {
                 }
             }
         }
-        Err(e) => PortCheckResult {
-            is_occupied: false,
-            processes: vec![],
-            error: Some(format!("Failed to execute lsof: {}", e)),
+        Err(e) => {
+            println!("[ERROR] Failed to execute lsof command: {}", e);
+            PortCheckResult {
+                is_occupied: false,
+                processes: vec![],
+                error: Some(format!("Failed to execute lsof: {}", e)),
+            }
         },
     }
 }
 
-// Kill a process by PID
+// Kill a process by PID using SIGKILL signal
 #[tauri::command]
 fn kill_process(pid: String) -> Result<String, String> {
+    println!("[INFO] Attempting to kill process with PID: {}", pid);
+    
+    // Validate PID format
+    if let Err(e) = pid.parse::<u32>() {
+        println!("[ERROR] Invalid PID format '{}': {}", pid, e);
+        return Err(format!("Invalid PID format: {}", pid));
+    }
+    
+    println!("[DEBUG] Executing kill -9 command for PID: {}", pid);
     let output = Command::new("kill")
         .arg("-9")
         .arg(&pid)
@@ -73,34 +105,51 @@ fn kill_process(pid: String) -> Result<String, String> {
     match output {
         Ok(output) => {
             if output.status.success() {
-                Ok(format!("Process {} killed successfully", pid))
+                println!("[INFO] Successfully killed process with PID: {}", pid);
+                Ok(format!("Process {} terminated successfully", pid))
             } else {
                 let error_msg = String::from_utf8_lossy(&output.stderr);
-                Err(format!("Failed to kill process {}: {}", pid, error_msg))
+                println!("[ERROR] Failed to kill process {}: status={}, stderr='{}'", 
+                         pid, output.status, error_msg);
+                Err(format!("Failed to terminate process {}: {}", pid, error_msg))
             }
         }
-        Err(e) => Err(format!("Failed to execute kill command: {}", e)),
+        Err(e) => {
+            println!("[ERROR] Failed to execute kill command for PID {}: {}", pid, e);
+            Err(format!("Failed to execute kill command: {}", e))
+        },
     }
 }
 
 // Parse lsof output to extract process information
+// lsof output format: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
 fn parse_lsof_output(output: &str, port: &str) -> Vec<ProcessInfo> {
+    println!("[DEBUG] Parsing lsof output, total lines: {}", output.lines().count());
     let mut processes = Vec::new();
     
-    for line in output.lines().skip(1) { // Skip header line
+    // Skip the header line and process each line
+    for (line_num, line) in output.lines().skip(1).enumerate() {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 9 {
+        println!("[DEBUG] Line {}: {} parts - {}", line_num + 1, parts.len(), line);
+        
+        if parts.len() >= 2 {
             let name = parts[0].to_string();
             let pid = parts[1].to_string();
+            
+            println!("[DEBUG] Extracted process - Name: '{}', PID: '{}'", name, pid);
             
             processes.push(ProcessInfo {
                 pid,
                 name,
                 port: port.to_string(),
             });
+        } else {
+            println!("[WARN] Skipping malformed line {}: not enough parts ({})", 
+                     line_num + 1, parts.len());
         }
     }
     
+    println!("[INFO] Successfully parsed {} processes from lsof output", processes.len());
     processes
 }
 
