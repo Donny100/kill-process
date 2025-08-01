@@ -15,6 +15,7 @@ interface PortCheckResult {
 }
 
 const port = ref("");
+const confirmedPort = ref(""); // Port that has been confirmed by user action
 const loading = ref(false);
 const result = reactive<PortCheckResult>({
   is_occupied: false,
@@ -29,6 +30,9 @@ async function checkPort() {
     return;
   }
 
+  // Update confirmed port when user initiates check
+  confirmedPort.value = port.value;
+  
   loading.value = true;
   message.value = "";
 
@@ -61,7 +65,7 @@ async function killProcess(pid: string, name: string) {
   console.log(`Attempting to kill process ${name} (PID: ${pid})`);
   
   try {
-    const response = await invoke<string>("kill_process", { pid });
+    await invoke<string>("kill_process", { pid });
     message.value = `Successfully terminated process ${name} (PID: ${pid})`;
     console.log(`Successfully killed process ${name} (PID: ${pid})`);
     
@@ -125,7 +129,7 @@ function handleKeyPress(event: KeyboardEvent) {
       <!-- Process Table -->
       <div v-if="result.processes.length > 0" class="process-table-container">
         <div class="table-header">
-          <h2 class="table-title">🔥 Processes Using Port {{ port }}</h2>
+          <h2 class="table-title">🔥 Processes Using Port {{ confirmedPort }}</h2>
           <span class="process-count">{{ result.processes.length }} process(es) found</span>
         </div>
         
@@ -168,10 +172,10 @@ function handleKeyPress(event: KeyboardEvent) {
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="!loading && port && !result.is_occupied" class="empty-state">
+      <div v-else-if="!loading && confirmedPort && !result.is_occupied" class="empty-state">
         <div class="empty-icon">✨</div>
         <h3 class="empty-title">Port Available</h3>
-        <p class="empty-description">Port {{ port }} is not being used by any process</p>
+        <p class="empty-description">Port {{ confirmedPort }} is not being used by any process</p>
       </div>
     </div>
   </div>
