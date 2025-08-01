@@ -37,9 +37,13 @@ fn check_port(port: String) -> PortCheckResult {
     };
 
     // Use lsof to check port usage - works on macOS and Linux
-    println!("[DEBUG] Executing lsof command for port {}", port_num);
+    // -sTCP:LISTEN only shows processes in LISTEN state to avoid duplicates
+    let port_arg = format!(":{}", port_num);
+    let lsof_args = vec!["-i", &port_arg, "-P", "-n", "-sTCP:LISTEN"];
+    println!("[DEBUG] Executing command: lsof {}", lsof_args.join(" "));
+    
     let output = Command::new("lsof")
-        .args(&["-i", &format!(":{}", port_num), "-P", "-n"])
+        .args(&lsof_args)
         .output();
 
     match output {
@@ -47,9 +51,10 @@ fn check_port(port: String) -> PortCheckResult {
             if output.status.success() {
                 let output_str = String::from_utf8_lossy(&output.stdout);
                 println!("[DEBUG] lsof command successful, output length: {} characters", output_str.len());
+                println!("[DEBUG] lsof raw output:\n{}", output_str);
                 
                 let processes = parse_lsof_output(&output_str, &port);
-                println!("[INFO] Found {} processes using port {}", processes.len(), port);
+                println!("[INFO] Found {} LISTEN processes using port {}", processes.len(), port);
                 
                 for process in &processes {
                     println!("[DEBUG] Process found - PID: {}, Name: {}, Port: {}", 
@@ -123,6 +128,7 @@ fn kill_process(pid: String) -> Result<String, String> {
 
 // Parse lsof output to extract process information
 // lsof output format: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+// Since we use -sTCP:LISTEN, all results are already LISTEN processes
 fn parse_lsof_output(output: &str, port: &str) -> Vec<ProcessInfo> {
     println!("[DEBUG] Parsing lsof output, total lines: {}", output.lines().count());
     let mut processes = Vec::new();
@@ -136,7 +142,7 @@ fn parse_lsof_output(output: &str, port: &str) -> Vec<ProcessInfo> {
             let name = parts[0].to_string();
             let pid = parts[1].to_string();
             
-            println!("[DEBUG] Extracted process - Name: '{}', PID: '{}'", name, pid);
+            println!("[DEBUG] Extracted LISTEN process - Name: '{}', PID: '{}'", name, pid);
             
             processes.push(ProcessInfo {
                 pid,
@@ -149,7 +155,7 @@ fn parse_lsof_output(output: &str, port: &str) -> Vec<ProcessInfo> {
         }
     }
     
-    println!("[INFO] Successfully parsed {} processes from lsof output", processes.len());
+    println!("[INFO] Successfully parsed {} LISTEN processes from lsof output", processes.len());
     processes
 }
 
