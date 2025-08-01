@@ -1,4 +1,4 @@
-# KillProcess - Process Management Tool
+# Kill Process - Process Management Tool
 
 A clean and beautiful cross-platform desktop application for detecting and killing processes occupying ports.
 
