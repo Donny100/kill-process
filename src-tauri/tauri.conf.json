@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "kill-process",
-        "width": 800,
-        "height": 600
+        "title": "KillProcess - Process Management Tool",
+        "width": 900,
+        "height": 700,
+        "resizable": true,
+        "minWidth": 600,
+        "minHeight": 500
       }
     ],
     "security": {

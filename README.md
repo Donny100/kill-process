@@ -1,16 +1,120 @@
-# Tauri + Vue + TypeScript
+# KillProcess - Process Management Tool
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+A clean and beautiful cross-platform desktop application for detecting and killing processes occupying ports.
 
-## Recommended IDE Setup
+## Features
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- 🔍 **Port Detection**: Quickly detect if a specific port is occupied
+- 📊 **Process Information**: Display detailed information of processes occupying ports (PID, process name)
+- ⚡ **One-Click Kill**: Safely terminate processes occupying ports
+- 🎨 **Modern UI**: Clean and beautiful user interface
+- 🖥️ **Cross-Platform**: Support for macOS, Windows, Linux
 
-## Type Support For `.vue` Imports in TS
+## Tech Stack
 
-Since TypeScript cannot handle type information for `.vue` imports, they are shimmed to be a generic Vue component type by default. In most cases this is fine if you don't really care about component prop types outside of templates. However, if you wish to get actual prop types in `.vue` imports (for example to get props validation when using manual `h(...)` calls), you can enable Volar's Take Over mode by following these steps:
+- **Frontend**: Vue 3 + TypeScript + TailwindCSS
+- **Backend**: Tauri (Rust)
+- **Build**: Cross-platform desktop application
 
-1. Run `Extensions: Show Built-in Extensions` from VS Code's command palette, look for `TypeScript and JavaScript Language Features`, then right click and select `Disable (Workspace)`. By default, Take Over mode will enable itself if the default TypeScript extension is disabled.
-2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
+## Development Environment
 
-You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+### Prerequisites
+
+- Node.js 18+
+- Rust 1.70+
+- pnpm (recommended) or npm
+
+### Install Dependencies
+
+```bash
+pnpm install
+```
+
+### Development Mode
+
+```bash
+pnpm tauri dev
+```
+
+### Build Application
+
+```bash
+# Build for all platforms
+pnpm tauri build
+
+# Build for macOS only
+pnpm tauri build --bundles dmg
+```
+
+## Usage
+
+1. **Launch Application**: Run `pnpm tauri dev` or open the built application directly
+2. **Enter Port**: Enter the port number to check in the input field (e.g., 3000, 8080)
+3. **Check Port**: Click the "Check Port" button or press Enter
+4. **View Results**: 
+   - If the port is not occupied, it will show "Port Available"
+   - If the port is occupied, it will display detailed information of the occupying processes
+5. **Kill Process**: Click the "Kill Process" button for the corresponding process to terminate it
+
+## Project Structure
+
+```
+kill-process/
+├── src/                    # Vue frontend code
+│   ├── App.vue           # Main application component
+│   ├── main.ts           # Application entry point
+│   └── style.css         # Global styles
+├── src-tauri/            # Tauri backend code
+│   ├── src/
+│   │   ├── main.rs       # Application entry point
+│   │   └── lib.rs        # Core functionality implementation
+│   └── Cargo.toml        # Rust dependencies configuration
+├── public/               # Static resources
+└── package.json          # Project configuration
+```
+
+## Core Functionality Implementation
+
+### Rust Backend Functions
+
+- `check_port(port: String)`: Check port occupation status
+- `kill_process(pid: String)`: Terminate specified process
+
+### Vue Frontend Features
+
+- Responsive port input and query
+- Real-time process information display
+- Elegant loading states and error handling
+- Modern user interface
+
+## Build and Deployment
+
+### Development Build
+
+```bash
+pnpm tauri dev
+```
+
+### Production Build
+
+```bash
+# Build for all platforms
+pnpm tauri build
+
+# Build for specific platforms
+pnpm tauri build --bundles dmg    # macOS
+pnpm tauri build --bundles msi    # Windows
+pnpm tauri build --bundles deb    # Linux
+```
+
+Build artifacts will be located in the `src-tauri/target/release/bundle/` directory.
+
+## Notes
+
+- The application requires system permissions to execute process termination operations
+- On macOS, the application uses `lsof` and `kill` commands
+- It is recommended to confirm process information before terminating processes to avoid accidentally killing important processes
+
+## License
+
+MIT License
