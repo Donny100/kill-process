@@ -11,6 +11,16 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+        include:
+          - target: x86_64-apple-darwin
+            arch: x64
+          - target: aarch64-apple-darwin
+            arch: arm64
     
     steps:
       - name: Checkout code
@@ -28,18 +38,20 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Install dependencies
         run: pnpm install
 
       - name: Build application
-        run: pnpm tauri build --bundles dmg
+        run: pnpm tauri build --bundles dmg --target ${{ matrix.target }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kill-process-macos
-          path: src-tauri/target/release/bundle/
+          name: kill-process-macos-${{ matrix.arch }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/
           retention-days: 30
 
   release:
@@ -54,7 +66,6 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: kill-process-macos
           path: artifacts
 
       - name: Create Release
