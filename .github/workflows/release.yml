@@ -18,9 +18,9 @@ jobs:
           - aarch64-apple-darwin
         include:
           - target: x86_64-apple-darwin
-            arch: x64
+            arch: intel
           - target: aarch64-apple-darwin
-            arch: arm64
+            arch: amd
     
     steps:
       - name: Checkout code
@@ -47,11 +47,19 @@ jobs:
       - name: Build application
         run: pnpm tauri build --bundles dmg --target ${{ matrix.target }}
 
+      - name: Rename DMG file
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg
+          DMG_FILE=$(ls *.dmg | head -n 1)
+          NEW_NAME="kill-process_0.1.0_${{ matrix.arch }}.dmg"
+          mv "$DMG_FILE" "$NEW_NAME"
+          echo "Renamed $DMG_FILE to $NEW_NAME"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kill-process-macos-${{ matrix.arch }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
           retention-days: 30
 
   release:
@@ -69,9 +77,9 @@ jobs:
           path: artifacts
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/**/*
+          files: artifacts/**/*.dmg
           draft: false
           prerelease: false
           generate_release_notes: true
