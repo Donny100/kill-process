@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -28,9 +31,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install
-
-      - name: Install Rust dependencies
-        run: cargo install tauri-cli
 
       - name: Build application
         run: pnpm tauri build --bundles dmg
