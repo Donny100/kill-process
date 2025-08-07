@@ -51,7 +51,8 @@ jobs:
         run: |
           cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg
           DMG_FILE=$(ls *.dmg | head -n 1)
-          NEW_NAME="kill-process_0.1.0_${{ matrix.arch }}.dmg"
+          VERSION=${GITHUB_REF#refs/tags/v}
+          NEW_NAME="kill-process_${VERSION}_${{ matrix.arch }}.dmg"
           mv "$DMG_FILE" "$NEW_NAME"
           echo "Renamed $DMG_FILE to $NEW_NAME"
 
