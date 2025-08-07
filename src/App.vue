@@ -213,14 +213,14 @@ function handleKeyPress(event: KeyboardEvent) {
                       class="graceful-kill-button"
                       title="Gracefully terminate this process (SIGTERM)"
                     >
-                      🔥 Graceful
+                      ❌ Graceful kill
                     </button>
                     <button
                       @click="killProcess(process.pid, process.name, false)"
                       class="force-kill-button"
                       title="Force kill this process (SIGKILL)"
                     >
-                      💀 Force
+                      💀 Force kill
                     </button>
                   </div>
                 </td>

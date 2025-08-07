@@ -163,6 +163,7 @@ fn kill_process_with_signal(pid: String, force: bool) -> Result<String, String> 
 fn parse_lsof_output(output: &str, port: &str) -> Vec<ProcessInfo> {
     println!("[DEBUG] Parsing lsof output, total lines: {}", output.lines().count());
     let mut processes = Vec::new();
+    let mut seen_pids = std::collections::HashSet::new();
     
     // Skip the header line and process each line
     for (line_num, line) in output.lines().skip(1).enumerate() {
@@ -175,18 +176,26 @@ fn parse_lsof_output(output: &str, port: &str) -> Vec<ProcessInfo> {
             
             println!("[DEBUG] Extracted LISTEN process - Name: '{}', PID: '{}'", name, pid);
             
-            processes.push(ProcessInfo {
-                pid,
-                name,
-                port: port.to_string(),
-            });
+            // Check if we've already seen this PID (deduplication)
+            if !seen_pids.contains(&pid) {
+                seen_pids.insert(pid.clone());
+                let pid_for_log = pid.clone(); // Clone for logging before moving
+                processes.push(ProcessInfo {
+                    pid,
+                    name,
+                    port: port.to_string(),
+                });
+                println!("[DEBUG] Added unique process with PID: {}", pid_for_log);
+            } else {
+                println!("[DEBUG] Skipping duplicate PID: {} (IPv4/IPv6 duplicate)", pid);
+            }
         } else {
             println!("[WARN] Skipping malformed line {}: not enough parts ({})", 
                      line_num + 1, parts.len());
         }
     }
     
-    println!("[INFO] Successfully parsed {} LISTEN processes from lsof output", processes.len());
+    println!("[INFO] Successfully parsed {} unique LISTEN processes from lsof output (after deduplication)", processes.len());
     processes
 }
 
@@ -286,7 +295,7 @@ fn get_process_detail(pid: String) -> Result<ProcessDetail, String> {
     }
 }
 
-// Helper function to get port information for a specific process
+// Helper function to get all port information for a specific process
 fn get_process_port(pid: &str) -> Option<String> {
     let lsof_args = vec!["-p", pid, "-P", "-n", "-iTCP"];
     
@@ -297,26 +306,43 @@ fn get_process_port(pid: &str) -> Option<String> {
     if let Ok(output) = output {
         if output.status.success() {
             let output_str = String::from_utf8_lossy(&output.stdout);
+            println!("[DEBUG] lsof output for PID {}:\n{}", pid, output_str);
             
-            // Parse lsof output to find port information
+            let mut ports = Vec::new();
+            
+            // Parse lsof output to find all port information
             for line in output_str.lines().skip(1) {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 9 {
                     let name_field = parts[8];
-                    // Look for patterns like *:port or localhost:port
+                    println!("[DEBUG] Checking name field: {}", name_field);
+                    
+                    // Look for patterns like *:port, localhost:port, or IP:port
                     if name_field.contains(':') {
                         if let Some(port_part) = name_field.split(':').last() {
                             // Check if it's a number (port) and not a service name
-                            if port_part.parse::<u16>().is_ok() {
-                                return Some(port_part.to_string());
+                            if let Ok(port_num) = port_part.parse::<u16>() {
+                                let port_str = port_num.to_string();
+                                // Avoid duplicates
+                                if !ports.contains(&port_str) {
+                                    ports.push(port_str);
+                                    println!("[DEBUG] Found port: {}", port_num);
+                                }
                             }
                         }
                     }
                 }
             }
+            
+            if !ports.is_empty() {
+                let result = ports.join(", ");
+                println!("[INFO] Found {} port(s) for PID {}: {}", ports.len(), pid, result);
+                return Some(result);
+            }
         }
     }
     
+    println!("[INFO] No ports found for PID {}", pid);
     None
 }
 
