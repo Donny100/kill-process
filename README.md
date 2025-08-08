@@ -12,7 +12,7 @@ A clean and beautiful cross-platform desktop application for detecting and killi
 
 ## Tech Stack
 
-- **Frontend**: Vue 3 + TypeScript + TailwindCSS
+- **Frontend**: Vue 3 + TypeScript
 - **Backend**: Tauri (Rust)
 - **Build**: Cross-platform desktop application
 
@@ -106,6 +106,23 @@ pnpm tauri build --bundles dmg    # macOS
 pnpm tauri build --bundles msi    # Windows
 pnpm tauri build --bundles deb    # Linux
 ```
+
+### Test
+
+```bash
+# run all test
+cargo test
+
+# run lib tests only
+cargo test --test lib_tests
+
+# run specific test
+cargo test test_parse_lsof_output_deduplication
+
+# run with debug output
+cargo test -- --nocapture
+```
+
 
 Build artifacts will be located in the `src-tauri/target/release/bundle/` directory.
 
