@@ -115,7 +115,7 @@ fn graceful_kill_process(pid: String) -> Result<String, String> {
 }
 
 // Internal function to kill process with specified signal
-fn kill_process_with_signal(pid: String, force: bool) -> Result<String, String> {
+pub fn kill_process_with_signal(pid: String, force: bool) -> Result<String, String> {
     let signal_type = if force { "SIGKILL (-9)" } else { "SIGTERM (-15)" };
     println!("[INFO] Attempting to {} process with PID: {} using {}", 
              if force { "force kill" } else { "gracefully terminate" }, pid, signal_type);
@@ -160,7 +160,7 @@ fn kill_process_with_signal(pid: String, force: bool) -> Result<String, String> 
 // Parse lsof output to extract process information
 // lsof output format: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
 // Since we use -sTCP:LISTEN, all results are already LISTEN processes
-fn parse_lsof_output(output: &str, port: &str) -> Vec<ProcessInfo> {
+pub fn parse_lsof_output(output: &str, port: &str) -> Vec<ProcessInfo> {
     println!("[DEBUG] Parsing lsof output, total lines: {}", output.lines().count());
     let mut processes = Vec::new();
     let mut seen_pids = std::collections::HashSet::new();
@@ -354,3 +354,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
