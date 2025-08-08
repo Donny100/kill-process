@@ -10,17 +10,16 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runs_on }}
     strategy:
       matrix:
-        target:
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
         include:
           - target: x86_64-apple-darwin
             arch: intel
+            runs_on: macos-13
           - target: aarch64-apple-darwin
-            arch: amd
+            arch: arm64
+            runs_on: macos-14
     
     steps:
       - name: Checkout code
