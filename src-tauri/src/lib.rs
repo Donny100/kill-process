@@ -28,6 +28,112 @@ pub struct PortCheckResult {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProcessSearchResult {
+    pub processes: Vec<ProcessInfo>,
+    pub error: Option<String>,
+}
+
+// Search for processes by name
+#[tauri::command]
+fn search_processes_by_name(process_name: String) -> ProcessSearchResult {
+    println!("[INFO] Searching for processes with name containing: {}", process_name);
+    
+    if process_name.trim().is_empty() {
+        return ProcessSearchResult {
+            processes: vec![],
+            error: Some("Process name cannot be empty".to_string()),
+        };
+    }
+    
+    // Use ps command to search for processes by name
+    // -A: show all processes, -o: specify output format
+    let ps_args = vec!["-A", "-o", "pid=,comm="];
+    println!("[DEBUG] Executing command: ps {}", ps_args.join(" "));
+    
+    let output = Command::new("ps")
+        .args(&ps_args)
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                println!("[DEBUG] ps command successful, output length: {} characters", output_str.len());
+                
+                let processes = parse_ps_output(&output_str, &process_name);
+                println!("[INFO] Found {} process(es) matching name '{}'", processes.len(), process_name);
+                
+                ProcessSearchResult {
+                    processes,
+                    error: None,
+                }
+            } else {
+                let error_str = String::from_utf8_lossy(&output.stderr);
+                println!("[ERROR] ps command failed with status: {}, stderr: {}", 
+                         output.status, error_str);
+                
+                ProcessSearchResult {
+                    processes: vec![],
+                    error: Some(format!("Failed to execute ps command: {}", error_str)),
+                }
+            }
+        }
+        Err(e) => {
+            println!("[ERROR] Failed to execute ps command: {}", e);
+            ProcessSearchResult {
+                processes: vec![],
+                error: Some(format!("Failed to execute ps command: {}", e)),
+            }
+        }
+    }
+}
+
+// Kill processes by name
+#[tauri::command]
+fn kill_processes_by_name(process_name: String, force: bool) -> Result<String, String> {
+    println!("[INFO] Attempting to kill processes with name: {} (force: {})", process_name, force);
+    
+    if process_name.trim().is_empty() {
+        return Err("Process name cannot be empty".to_string());
+    }
+    
+    // First, search for processes matching the name
+    let search_result = search_processes_by_name(process_name.clone());
+    
+    if let Some(error) = search_result.error {
+        return Err(format!("Failed to search for processes: {}", error));
+    }
+    
+    if search_result.processes.is_empty() {
+        return Err(format!("No processes found with name containing '{}'", process_name));
+    }
+    
+    let mut killed_count = 0;
+    let mut failed_kills = Vec::new();
+    
+    for process in search_result.processes {
+        match kill_process_with_signal(process.pid.clone(), force) {
+            Ok(_) => {
+                killed_count += 1;
+                println!("[INFO] Successfully killed process {} (PID: {})", process.name, process.pid);
+            }
+            Err(e) => {
+                failed_kills.push(format!("PID {}: {}", process.pid, e));
+                println!("[ERROR] Failed to kill process {} (PID: {}): {}", process.name, process.pid, e);
+            }
+        }
+    }
+    
+    if failed_kills.is_empty() {
+        Ok(format!("Successfully killed {} process(es) with name containing '{}'", killed_count, process_name))
+    } else if killed_count > 0 {
+        Ok(format!("Killed {} process(es), but {} failed: {}", killed_count, failed_kills.len(), failed_kills.join("; ")))
+    } else {
+        Err(format!("Failed to kill all processes: {}", failed_kills.join("; ")))
+    }
+}
+
 // Check if a port is occupied and return process information
 #[tauri::command]
 fn check_port(port: String) -> PortCheckResult {
@@ -155,6 +261,40 @@ pub fn kill_process_with_signal(pid: String, force: bool) -> Result<String, Stri
             Err(format!("Failed to execute kill command: {}", e))
         },
     }
+}
+
+// Parse ps output to extract process information for name search
+// ps output format: PID COMMAND
+pub fn parse_ps_output(output: &str, search_name: &str) -> Vec<ProcessInfo> {
+    println!("[DEBUG] Parsing ps output for search term: '{}', total lines: {}", search_name, output.lines().count());
+    let mut processes = Vec::new();
+    let search_name_lower = search_name.to_lowercase();
+    
+    for (line_num, line) in output.lines().enumerate() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        
+        if parts.len() >= 2 {
+            let pid = parts[0];
+            let command = parts[1];
+            
+            // Check if the command name contains the search term (case-insensitive)
+            if command.to_lowercase().contains(&search_name_lower) {
+                println!("[DEBUG] Found matching process - PID: '{}', Name: '{}'", pid, command);
+                
+                processes.push(ProcessInfo {
+                    pid: pid.to_string(),
+                    name: command.to_string(),
+                    port: "Unknown".to_string(), // Port is unknown for name-based search
+                });
+            }
+        } else if !line.trim().is_empty() {
+            println!("[WARN] Skipping malformed line {}: not enough parts ({})", 
+                     line_num + 1, parts.len());
+        }
+    }
+    
+    println!("[INFO] Successfully parsed {} matching processes from ps output", processes.len());
+    processes
 }
 
 // Parse lsof output to extract process information
@@ -350,7 +490,14 @@ fn get_process_port(pid: &str) -> Option<String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![check_port, kill_process, graceful_kill_process, get_process_detail])
+        .invoke_handler(tauri::generate_handler![
+            check_port, 
+            kill_process, 
+            graceful_kill_process, 
+            get_process_detail, 
+            search_processes_by_name, 
+            kill_processes_by_name
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -25,11 +25,23 @@ interface PortCheckResult {
   error?: string;
 }
 
+interface ProcessSearchResult {
+  processes: ProcessInfo[];
+  error?: string;
+}
+
 const port = ref("");
 const confirmedPort = ref(""); // Port that has been confirmed by user action
+const processName = ref("");
+const confirmedProcessName = ref(""); // Process name that has been confirmed by user action
 const loading = ref(false);
+const processSearchLoading = ref(false);
+const searchMode = ref<"port" | "name">("port"); // Current search mode
 const result = reactive<PortCheckResult>({
   is_occupied: false,
+  processes: [],
+});
+const processSearchResult = reactive<ProcessSearchResult>({
   processes: [],
 });
 const message = ref("");
@@ -48,6 +60,8 @@ async function checkPort() {
 
   // Update confirmed port when user initiates check
   confirmedPort.value = port.value;
+  confirmedProcessName.value = ""; // Clear process name when searching by port
+  searchMode.value = "port";
   
   loading.value = true;
   message.value = "";
@@ -76,6 +90,71 @@ async function checkPort() {
   }
 }
 
+// Search processes by name
+async function searchProcessesByName() {
+  if (!processName.value) {
+    message.value = "Please enter a process name";
+    return;
+  }
+
+  // Update confirmed process name when user initiates search
+  confirmedProcessName.value = processName.value;
+  confirmedPort.value = ""; // Clear port when searching by name
+  searchMode.value = "name";
+  
+  processSearchLoading.value = true;
+  message.value = "";
+
+  console.log(`Searching for processes with name: ${processName.value}...`);
+
+  try {
+    const response = await invoke<ProcessSearchResult>("search_processes_by_name", { processName: processName.value.toString() });
+    Object.assign(processSearchResult, response);
+    
+    if (response.error) {
+      message.value = `Error: ${response.error}`;
+      console.error(`Process search error: ${response.error}`);
+    } else if (response.processes.length === 0) {
+      message.value = `No processes found with name containing '${processName.value}'`;
+      console.log(`No processes found with name containing '${processName.value}'`);
+    } else {
+      message.value = `Found ${response.processes.length} process(es) with name containing '${processName.value}'`;
+      console.log(`Found ${response.processes.length} processes with name containing '${processName.value}'`, response.processes);
+    }
+  } catch (error) {
+    message.value = `Query failed: ${error}`;
+    console.error(`Process search failed: ${error}`);
+  } finally {
+    processSearchLoading.value = false;
+  }
+}
+
+// Kill all processes by name
+async function killProcessesByName(graceful: boolean = false) {
+  if (!confirmedProcessName.value) {
+    message.value = "No process name to kill";
+    return;
+  }
+
+  const action = graceful ? "gracefully terminate" : "force kill";
+  console.log(`Attempting to ${action} all processes with name: ${confirmedProcessName.value}`);
+  
+  try {
+    const result = await invoke<string>("kill_processes_by_name", { 
+      processName: confirmedProcessName.value, 
+      force: !graceful 
+    });
+    message.value = result;
+    console.log(`Process kill result: ${result}`);
+    
+    // Refresh process search after killing processes
+    await searchProcessesByName();
+  } catch (error) {
+    message.value = `Failed to ${action} processes: ${error}`;
+    console.error(`Failed to ${action} processes with name ${confirmedProcessName.value}: ${error}`);
+  }
+}
+
 // Kill process with force option
 async function killProcess(pid: string, name: string, graceful: boolean = false) {
   const action = graceful ? "gracefully terminate" : "force kill";
@@ -87,8 +166,12 @@ async function killProcess(pid: string, name: string, graceful: boolean = false)
     message.value = `Successfully ${graceful ? "gracefully terminated" : "force killed"} process ${name} (PID: ${pid})`;
     console.log(`Successfully ${action} process ${name} (PID: ${pid})`);
     
-    // Refresh port check after killing process
-    await checkPort();
+    // Refresh search after killing process
+    if (searchMode.value === "port") {
+      await checkPort();
+    } else {
+      await searchProcessesByName();
+    }
   } catch (error) {
     message.value = `Failed to ${action} process: ${error}`;
     console.error(`Failed to ${action} process ${name} (PID: ${pid}): ${error}`);
@@ -119,10 +202,17 @@ function closeDetailModal() {
   selectedProcessDetail.value = null;
 }
 
-// Handle Enter key press
-function handleKeyPress(event: KeyboardEvent) {
+// Handle Enter key press for port input
+function handlePortKeyPress(event: KeyboardEvent) {
   if (event.key === "Enter") {
     checkPort();
+  }
+}
+
+// Handle Enter key press for process name input
+function handleProcessNameKeyPress(event: KeyboardEvent) {
+  if (event.key === "Enter") {
+    searchProcessesByName();
   }
 }
 </script>
@@ -133,14 +223,33 @@ function handleKeyPress(event: KeyboardEvent) {
       <!-- Header -->
       <header class="app-header">
         <h1 class="app-title">⚡ Kill Process</h1>
+        <p class="app-subtitle">Search by port or process name</p>
       </header>
 
+      <!-- Search Mode Tabs -->
+      <section class="tab-section">
+        <div class="tab-buttons">
+          <button 
+            @click="searchMode = 'port'" 
+            :class="['tab-button', { active: searchMode === 'port' }]"
+          >
+            🔌 Search by Port
+          </button>
+          <button 
+            @click="searchMode = 'name'" 
+            :class="['tab-button', { active: searchMode === 'name' }]"
+          >
+            📋 Search by Process Name
+          </button>
+        </div>
+      </section>
+
       <!-- Port Input Section -->
-      <section class="input-section">
+      <section v-if="searchMode === 'port'" class="input-section">
         <div class="input-group">
           <input
             v-model="port"
-            @keypress="handleKeyPress"
+            @keypress="handlePortKeyPress"
             type="number"
             placeholder="Enter port number (e.g., 3000)"
             class="port-input"
@@ -160,6 +269,52 @@ function handleKeyPress(event: KeyboardEvent) {
         </div>
       </section>
 
+      <!-- Process Name Input Section -->
+      <section v-if="searchMode === 'name'" class="input-section">
+        <div class="input-group">
+          <input
+            v-model="processName"
+            @keypress="handleProcessNameKeyPress"
+            type="text"
+            placeholder="Enter process name (e.g., node, python, nginx)"
+            class="process-input"
+            :disabled="processSearchLoading"
+          />
+          <button
+            @click="searchProcessesByName"
+            :disabled="processSearchLoading"
+            class="check-button"
+          >
+            <span v-if="processSearchLoading" class="loading-content">
+              <span class="loading-spinner"></span>
+              Searching...
+            </span>
+            <span v-else>🔍 Search Processes</span>
+          </button>
+        </div>
+        
+        <!-- Bulk Actions for Process Name Mode -->
+        <div v-if="confirmedProcessName && processSearchResult.processes.length > 0" class="bulk-actions">
+          <p class="bulk-actions-label">Actions for all processes with name containing "{{ confirmedProcessName }}":</p>
+          <div class="bulk-action-buttons">
+            <button
+              @click="killProcessesByName(true)"
+              class="bulk-graceful-kill-button"
+              title="Gracefully terminate all matching processes (SIGTERM)"
+            >
+              ❌ Graceful Kill All
+            </button>
+            <button
+              @click="killProcessesByName(false)"
+              class="bulk-force-kill-button"
+              title="Force kill all matching processes (SIGKILL)"
+            >
+              💀 Force Kill All
+            </button>
+          </div>
+        </div>
+      </section>
+
       <!-- Message Display -->
       <div v-if="message" class="message-display">
         <div class="message-content" :class="{ 'error': message.includes('Error') || message.includes('failed') }">
@@ -168,8 +323,8 @@ function handleKeyPress(event: KeyboardEvent) {
         </div>
       </div>
 
-      <!-- Process Table -->
-      <div v-if="result.processes.length > 0" class="process-table-container">
+      <!-- Process Table for Port Search -->
+      <div v-if="searchMode === 'port' && result.processes.length > 0" class="process-table-container">
         <div class="table-header">
           <h2 class="table-title">🔥 Processes Using Port {{ confirmedPort }}</h2>
           <span class="process-count">{{ result.processes.length }} process(es) found</span>
@@ -230,11 +385,76 @@ function handleKeyPress(event: KeyboardEvent) {
         </div>
       </div>
 
-      <!-- Empty State -->
-      <div v-else-if="!loading && confirmedPort && !result.is_occupied" class="empty-state">
+      <!-- Process Table for Name Search -->
+      <div v-if="searchMode === 'name' && processSearchResult.processes.length > 0" class="process-table-container">
+        <div class="table-header">
+          <h2 class="table-title">🔥 Processes with Name "{{ confirmedProcessName }}"</h2>
+          <span class="process-count">{{ processSearchResult.processes.length }} process(es) found</span>
+        </div>
+        
+        <div class="table-wrapper">
+          <table class="process-table process-table-name-search">
+            <thead>
+              <tr>
+                <th class="pid-header">PID</th>
+                <th class="name-header">Process Name</th>
+                <th class="action-header">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="process in processSearchResult.processes"
+                :key="process.pid"
+                class="process-row"
+              >
+                <td class="pid-cell">{{ process.pid }}</td>
+                <td class="name-cell name-cell-wide">
+                  <span class="process-name-truncated" :title="process.name">{{ process.name }}</span>
+                </td>
+                <td class="action-cell">
+                  <div class="action-buttons">
+                    <button
+                      @click="getProcessDetail(process.pid)"
+                      :disabled="detailLoading"
+                      class="detail-button"
+                      title="View process details"
+                    >
+                      📋 Detail
+                    </button>
+                    <button
+                      @click="killProcess(process.pid, process.name, true)"
+                      class="graceful-kill-button"
+                      title="Gracefully terminate this process (SIGTERM)"
+                    >
+                      ❌ Graceful kill
+                    </button>
+                    <button
+                      @click="killProcess(process.pid, process.name, false)"
+                      class="force-kill-button"
+                      title="Force kill this process (SIGKILL)"
+                    >
+                      💀 Force kill
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Empty State for Port Search -->
+      <div v-if="searchMode === 'port' && !loading && confirmedPort && !result.is_occupied" class="empty-state">
         <div class="empty-icon">✨</div>
         <h3 class="empty-title">Port Available</h3>
         <p class="empty-description">Port {{ confirmedPort }} is not being used by any process</p>
+      </div>
+
+      <!-- Empty State for Process Name Search -->
+      <div v-if="searchMode === 'name' && !processSearchLoading && confirmedProcessName && processSearchResult.processes.length === 0" class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <h3 class="empty-title">No Processes Found</h3>
+        <p class="empty-description">No processes found with name containing "{{ confirmedProcessName }}"</p>
       </div>
     </div>
 
@@ -330,6 +550,45 @@ function handleKeyPress(event: KeyboardEvent) {
   font-weight: 400;
 }
 
+/* Tab Section */
+.tab-section {
+  margin-bottom: 24px;
+}
+
+.tab-buttons {
+  display: flex;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(20px);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.tab-button {
+  flex: 1;
+  padding: 12px 20px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #6e6e73;
+}
+
+.tab-button.active {
+  background: linear-gradient(135deg, #007aff 0%, #5856d6 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.tab-button:hover:not(.active) {
+  background: rgba(0, 122, 255, 0.1);
+  color: #007aff;
+}
+
 /* Input Section */
 .input-section {
   background: rgba(255, 255, 255, 0.8);
@@ -347,7 +606,8 @@ function handleKeyPress(event: KeyboardEvent) {
   align-items: stretch;
 }
 
-.port-input {
+.port-input,
+.process-input {
   flex: 1;
   padding: 14px 16px;
   border: 2px solid #e5e5e7;
@@ -358,13 +618,15 @@ function handleKeyPress(event: KeyboardEvent) {
   outline: none;
 }
 
-.port-input:focus {
+.port-input:focus,
+.process-input:focus {
   border-color: #007aff;
   box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
   transform: translateY(-1px);
 }
 
-.port-input:disabled {
+.port-input:disabled,
+.process-input:disabled {
   background: #f2f2f7;
   color: #8e8e93;
   cursor: not-allowed;
@@ -522,6 +784,12 @@ function handleKeyPress(event: KeyboardEvent) {
   display: inline-block;
 }
 
+.port-unknown {
+  color: #8e8e93;
+  font-style: italic;
+  font-size: 12px;
+}
+
 .pid-cell {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   font-weight: 500;
@@ -531,6 +799,39 @@ function handleKeyPress(event: KeyboardEvent) {
 .process-name {
   font-weight: 500;
   color: #1d1d1f;
+}
+
+/* Process name truncation for long names */
+.process-name-truncated {
+  font-weight: 500;
+  color: #1d1d1f;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Special styling for name search table */
+.process-table-name-search {
+  table-layout: fixed;
+}
+
+.process-table-name-search .pid-header {
+  width: 80px;
+}
+
+.process-table-name-search .name-header {
+  width: auto;
+  min-width: 200px;
+}
+
+.process-table-name-search .action-header {
+  width: 280px;
+}
+
+.name-cell-wide {
+  max-width: 0; /* This allows text-overflow to work with table-layout: fixed */
 }
 
 /* Action Buttons */
@@ -635,6 +936,69 @@ function handleKeyPress(event: KeyboardEvent) {
   margin: 0;
 }
 
+/* Bulk Actions */
+.bulk-actions {
+  margin-top: 20px;
+  padding: 16px;
+  background: rgba(255, 149, 0, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 149, 0, 0.2);
+}
+
+.bulk-actions-label {
+  font-size: 14px;
+  color: #1d1d1f;
+  margin: 0 0 12px 0;
+  font-weight: 500;
+}
+
+.bulk-action-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bulk-graceful-kill-button {
+  background: linear-gradient(135deg, #ff9500 0%, #ff6d00 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(255, 149, 0, 0.3);
+}
+
+.bulk-graceful-kill-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 149, 0, 0.4);
+}
+
+.bulk-force-kill-button {
+  background: linear-gradient(135deg, #ff3b30 0%, #ff2d92 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
+}
+
+.bulk-force-kill-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
+}
+
+.bulk-graceful-kill-button:active,
+.bulk-force-kill-button:active {
+  transform: translateY(0);
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .app-container {
@@ -667,6 +1031,19 @@ function handleKeyPress(event: KeyboardEvent) {
   .action-buttons {
     flex-direction: column;
     gap: 4px;
+  }
+
+  /* Responsive adjustments for name search table */
+  .process-table-name-search .pid-header {
+    width: 60px;
+  }
+
+  .process-table-name-search .action-header {
+    width: 200px;
+  }
+
+  .bulk-action-buttons {
+    flex-direction: column;
   }
 }
 
