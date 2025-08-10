@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive } from "vue";
+import { ref, reactive, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
 interface ProcessInfo {
@@ -44,7 +44,13 @@ const result = reactive<PortCheckResult>({
 const processSearchResult = reactive<ProcessSearchResult>({
   processes: [],
 });
-const message = ref("");
+const portMessage = ref(""); // Message for port search tab
+const nameMessage = ref(""); // Message for name search tab
+
+// Computed property to get current message based on active tab
+const currentMessage = computed(() => {
+  return searchMode.value === "port" ? portMessage.value : nameMessage.value;
+});
 
 // Process detail modal state
 const showDetailModal = ref(false);
@@ -54,7 +60,7 @@ const selectedProcessDetail = ref<ProcessDetail | null>(null);
 // Check port occupation
 async function checkPort() {
   if (!port.value) {
-    message.value = "Please enter a port number";
+    portMessage.value = "Please enter a port number";
     return;
   }
 
@@ -64,7 +70,7 @@ async function checkPort() {
   searchMode.value = "port";
   
   loading.value = true;
-  message.value = "";
+  portMessage.value = "";
 
   console.log(`Checking port ${port.value}...`);
 
@@ -73,17 +79,17 @@ async function checkPort() {
     Object.assign(result, response);
     
     if (response.error) {
-      message.value = `Error: ${response.error}`;
+      portMessage.value = `Error: ${response.error}`;
       console.error(`Port check error: ${response.error}`);
     } else if (!response.is_occupied) {
-      message.value = `Port ${port.value} is available`;
+      portMessage.value = `Port ${port.value} is available`;
       console.log(`Port ${port.value} is available`);
     } else {
-      message.value = `Found ${response.processes.length} process(es) using port ${port.value}`;
+      portMessage.value = `Found ${response.processes.length} process(es) using port ${port.value}`;
       console.log(`Found ${response.processes.length} processes using port ${port.value}`, response.processes);
     }
   } catch (error) {
-    message.value = `Query failed: ${error}`;
+    portMessage.value = `Query failed: ${error}`;
     console.error(`Port check failed: ${error}`);
   } finally {
     loading.value = false;
@@ -93,7 +99,7 @@ async function checkPort() {
 // Search processes by name
 async function searchProcessesByName() {
   if (!processName.value) {
-    message.value = "Please enter a process name";
+    nameMessage.value = "Please enter a process name";
     return;
   }
 
@@ -103,7 +109,7 @@ async function searchProcessesByName() {
   searchMode.value = "name";
   
   processSearchLoading.value = true;
-  message.value = "";
+  nameMessage.value = "";
 
   console.log(`Searching for processes with name: ${processName.value}...`);
 
@@ -112,17 +118,17 @@ async function searchProcessesByName() {
     Object.assign(processSearchResult, response);
     
     if (response.error) {
-      message.value = `Error: ${response.error}`;
+      nameMessage.value = `Error: ${response.error}`;
       console.error(`Process search error: ${response.error}`);
     } else if (response.processes.length === 0) {
-      message.value = `No processes found with name containing '${processName.value}'`;
+      nameMessage.value = `No processes found with name containing '${processName.value}'`;
       console.log(`No processes found with name containing '${processName.value}'`);
     } else {
-      message.value = `Found ${response.processes.length} process(es) with name containing '${processName.value}'`;
+      nameMessage.value = `Found ${response.processes.length} process(es) with name containing '${processName.value}'`;
       console.log(`Found ${response.processes.length} processes with name containing '${processName.value}'`, response.processes);
     }
   } catch (error) {
-    message.value = `Query failed: ${error}`;
+    nameMessage.value = `Query failed: ${error}`;
     console.error(`Process search failed: ${error}`);
   } finally {
     processSearchLoading.value = false;
@@ -139,7 +145,15 @@ async function killProcess(pid: string, name: string, graceful: boolean = false)
   try {
     const command = graceful ? "graceful_kill_process" : "kill_process";
     await invoke<string>(command, { pid });
-    message.value = `Successfully ${graceful ? "gracefully terminated" : "force killed"} process ${name} (PID: ${pid})`;
+    const successMessage = `Successfully ${graceful ? "gracefully terminated" : "force killed"} process ${name} (PID: ${pid})`;
+    
+    // Update the appropriate message based on current tab
+    if (searchMode.value === "port") {
+      portMessage.value = successMessage;
+    } else {
+      nameMessage.value = successMessage;
+    }
+    
     console.log(`Successfully ${action} process ${name} (PID: ${pid})`);
     
     // Refresh search after killing process
@@ -149,7 +163,15 @@ async function killProcess(pid: string, name: string, graceful: boolean = false)
       await searchProcessesByName();
     }
   } catch (error) {
-    message.value = `Failed to ${action} process: ${error}`;
+    const errorMessage = `Failed to ${action} process: ${error}`;
+    
+    // Update the appropriate message based on current tab
+    if (searchMode.value === "port") {
+      portMessage.value = errorMessage;
+    } else {
+      nameMessage.value = errorMessage;
+    }
+    
     console.error(`Failed to ${action} process ${name} (PID: ${pid}): ${error}`);
   }
 }
@@ -165,7 +187,15 @@ async function getProcessDetail(pid: string) {
     showDetailModal.value = true;
     console.log(`Successfully retrieved details for PID: ${pid}`, detail);
   } catch (error) {
-    message.value = `Failed to get process details: ${error}`;
+    const errorMessage = `Failed to get process details: ${error}`;
+    
+    // Update the appropriate message based on current tab
+    if (searchMode.value === "port") {
+      portMessage.value = errorMessage;
+    } else {
+      nameMessage.value = errorMessage;
+    }
+    
     console.error(`Failed to get process details for PID ${pid}: ${error}`);
   } finally {
     detailLoading.value = false;
@@ -191,6 +221,15 @@ function handleProcessNameKeyPress(event: KeyboardEvent) {
     searchProcessesByName();
   }
 }
+
+// Handle tab switching
+function switchToPortSearch() {
+  searchMode.value = "port";
+}
+
+function switchToNameSearch() {
+  searchMode.value = "name";
+}
 </script>
 
 <template>
@@ -206,13 +245,13 @@ function handleProcessNameKeyPress(event: KeyboardEvent) {
       <section class="tab-section">
         <div class="tab-buttons">
           <button 
-            @click="searchMode = 'port'" 
+            @click="switchToPortSearch()" 
             :class="['tab-button', { active: searchMode === 'port' }]"
           >
             🔌 Search by Port
           </button>
           <button 
-            @click="searchMode = 'name'" 
+            @click="switchToNameSearch()" 
             :class="['tab-button', { active: searchMode === 'name' }]"
           >
             📋 Search by Process Name
@@ -273,10 +312,10 @@ function handleProcessNameKeyPress(event: KeyboardEvent) {
       </section>
 
       <!-- Message Display -->
-      <div v-if="message" class="message-display">
-        <div class="message-content" :class="{ 'error': message.includes('Error') || message.includes('failed') }">
-          <span class="message-icon">{{ message.includes('Error') || message.includes('failed') ? '❌' : message.includes('available') ? '✅' : 'ℹ️' }}</span>
-          {{ message }}
+      <div v-if="currentMessage" class="message-display">
+        <div class="message-content" :class="{ 'error': currentMessage.includes('Error') || currentMessage.includes('failed') }">
+          <span class="message-icon">{{ currentMessage.includes('Error') || currentMessage.includes('failed') ? '❌' : currentMessage.includes('available') ? '✅' : 'ℹ️' }}</span>
+          {{ currentMessage }}
         </div>
       </div>
 
