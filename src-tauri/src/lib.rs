@@ -225,7 +225,13 @@ pub fn kill_process_with_signal(pid: String, force: bool) -> Result<String, Stri
 pub fn parse_ps_output(output: &str, search_name: &str) -> Vec<ProcessInfo> {
     println!("[DEBUG] Parsing ps output for search term: '{}', total lines: {}", search_name, output.lines().count());
     let mut processes = Vec::new();
-    let search_name_lower = search_name.to_lowercase();
+    let search_name_lower = search_name.to_lowercase().trim().to_string();
+    
+    // Return empty result for empty or whitespace-only search terms
+    if search_name_lower.is_empty() {
+        println!("[DEBUG] Empty search term provided, returning no matches");
+        return processes;
+    }
     
     for (line_num, line) in output.lines().enumerate() {
         let parts: Vec<&str> = line.split_whitespace().collect();
