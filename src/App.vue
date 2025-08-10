@@ -822,16 +822,19 @@ function handleProcessNameKeyPress(event: KeyboardEvent) {
 }
 
 .process-table-name-search .name-header {
-  width: auto;
-  min-width: 200px;
+  width: 35%; /* Limit name column to 35% of table width */
+  min-width: 150px;
+  max-width: 300px;
 }
 
 .process-table-name-search .action-header {
-  width: 280px;
+  width: auto; /* Let action column take remaining space */
+  min-width: 300px;
 }
 
 .name-cell-wide {
   max-width: 0; /* This allows text-overflow to work with table-layout: fixed */
+  padding-right: 12px; /* Add some padding for better spacing */
 }
 
 /* Action Buttons */
@@ -1038,8 +1041,15 @@ function handleProcessNameKeyPress(event: KeyboardEvent) {
     width: 60px;
   }
 
+  .process-table-name-search .name-header {
+    width: 30%; /* Even more compact on mobile */
+    min-width: 120px;
+    max-width: 200px;
+  }
+
   .process-table-name-search .action-header {
-    width: 200px;
+    width: auto;
+    min-width: 180px;
   }
 
   .bulk-action-buttons {
