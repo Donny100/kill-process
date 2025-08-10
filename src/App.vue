@@ -129,31 +129,7 @@ async function searchProcessesByName() {
   }
 }
 
-// Kill all processes by name
-async function killProcessesByName(graceful: boolean = false) {
-  if (!confirmedProcessName.value) {
-    message.value = "No process name to kill";
-    return;
-  }
 
-  const action = graceful ? "gracefully terminate" : "force kill";
-  console.log(`Attempting to ${action} all processes with name: ${confirmedProcessName.value}`);
-  
-  try {
-    const result = await invoke<string>("kill_processes_by_name", { 
-      processName: confirmedProcessName.value, 
-      force: !graceful 
-    });
-    message.value = result;
-    console.log(`Process kill result: ${result}`);
-    
-    // Refresh process search after killing processes
-    await searchProcessesByName();
-  } catch (error) {
-    message.value = `Failed to ${action} processes: ${error}`;
-    console.error(`Failed to ${action} processes with name ${confirmedProcessName.value}: ${error}`);
-  }
-}
 
 // Kill process with force option
 async function killProcess(pid: string, name: string, graceful: boolean = false) {
@@ -293,26 +269,7 @@ function handleProcessNameKeyPress(event: KeyboardEvent) {
           </button>
         </div>
         
-        <!-- Bulk Actions for Process Name Mode -->
-        <div v-if="confirmedProcessName && processSearchResult.processes.length > 0" class="bulk-actions">
-          <p class="bulk-actions-label">Actions for all processes with name containing "{{ confirmedProcessName }}":</p>
-          <div class="bulk-action-buttons">
-            <button
-              @click="killProcessesByName(true)"
-              class="bulk-graceful-kill-button"
-              title="Gracefully terminate all matching processes (SIGTERM)"
-            >
-              ❌ Graceful Kill All
-            </button>
-            <button
-              @click="killProcessesByName(false)"
-              class="bulk-force-kill-button"
-              title="Force kill all matching processes (SIGKILL)"
-            >
-              💀 Force Kill All
-            </button>
-          </div>
-        </div>
+
       </section>
 
       <!-- Message Display -->
@@ -939,68 +896,7 @@ function handleProcessNameKeyPress(event: KeyboardEvent) {
   margin: 0;
 }
 
-/* Bulk Actions */
-.bulk-actions {
-  margin-top: 20px;
-  padding: 16px;
-  background: rgba(255, 149, 0, 0.05);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 149, 0, 0.2);
-}
 
-.bulk-actions-label {
-  font-size: 14px;
-  color: #1d1d1f;
-  margin: 0 0 12px 0;
-  font-weight: 500;
-}
-
-.bulk-action-buttons {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.bulk-graceful-kill-button {
-  background: linear-gradient(135deg, #ff9500 0%, #ff6d00 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(255, 149, 0, 0.3);
-}
-
-.bulk-graceful-kill-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 149, 0, 0.4);
-}
-
-.bulk-force-kill-button {
-  background: linear-gradient(135deg, #ff3b30 0%, #ff2d92 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(255, 59, 48, 0.3);
-}
-
-.bulk-force-kill-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 59, 48, 0.4);
-}
-
-.bulk-graceful-kill-button:active,
-.bulk-force-kill-button:active {
-  transform: translateY(0);
-}
 
 /* Responsive Design */
 @media (max-width: 768px) {
@@ -1052,9 +948,7 @@ function handleProcessNameKeyPress(event: KeyboardEvent) {
     min-width: 180px;
   }
 
-  .bulk-action-buttons {
-    flex-direction: column;
-  }
+
 }
 
 /* Modal Styles */

@@ -89,50 +89,7 @@ fn search_processes_by_name(process_name: String) -> ProcessSearchResult {
     }
 }
 
-// Kill processes by name
-#[tauri::command]
-fn kill_processes_by_name(process_name: String, force: bool) -> Result<String, String> {
-    println!("[INFO] Attempting to kill processes with name: {} (force: {})", process_name, force);
-    
-    if process_name.trim().is_empty() {
-        return Err("Process name cannot be empty".to_string());
-    }
-    
-    // First, search for processes matching the name
-    let search_result = search_processes_by_name(process_name.clone());
-    
-    if let Some(error) = search_result.error {
-        return Err(format!("Failed to search for processes: {}", error));
-    }
-    
-    if search_result.processes.is_empty() {
-        return Err(format!("No processes found with name containing '{}'", process_name));
-    }
-    
-    let mut killed_count = 0;
-    let mut failed_kills = Vec::new();
-    
-    for process in search_result.processes {
-        match kill_process_with_signal(process.pid.clone(), force) {
-            Ok(_) => {
-                killed_count += 1;
-                println!("[INFO] Successfully killed process {} (PID: {})", process.name, process.pid);
-            }
-            Err(e) => {
-                failed_kills.push(format!("PID {}: {}", process.pid, e));
-                println!("[ERROR] Failed to kill process {} (PID: {}): {}", process.name, process.pid, e);
-            }
-        }
-    }
-    
-    if failed_kills.is_empty() {
-        Ok(format!("Successfully killed {} process(es) with name containing '{}'", killed_count, process_name))
-    } else if killed_count > 0 {
-        Ok(format!("Killed {} process(es), but {} failed: {}", killed_count, failed_kills.len(), failed_kills.join("; ")))
-    } else {
-        Err(format!("Failed to kill all processes: {}", failed_kills.join("; ")))
-    }
-}
+
 
 // Check if a port is occupied and return process information
 #[tauri::command]
@@ -495,8 +452,7 @@ pub fn run() {
             kill_process, 
             graceful_kill_process, 
             get_process_detail, 
-            search_processes_by_name, 
-            kill_processes_by_name
+            search_processes_by_name
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
